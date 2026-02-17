@@ -16,5 +16,13 @@ func TestParseHeader(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Log("trace:", tr)
+	t.Logf("trace: %s=%#v", tr, tr)
+
+	tr2, err := w3ctrace.ParseHeader(http.Header{"Traceparent": {tr.String()}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tr2 != tr {
+		t.Fatalf("mismatch: tr1=%s != tr2=%s", tr, tr2)
+	}
 }

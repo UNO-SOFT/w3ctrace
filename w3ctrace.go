@@ -5,6 +5,7 @@
 package w3ctrace
 
 import (
+	"encoding/base64"
 	"encoding/hex"
 	"fmt"
 	"net/http"
@@ -12,18 +13,26 @@ import (
 )
 
 type (
-	TraceID [16]byte
-	SpanID  [8]byte
-	Flags   [1]byte
+	TraceID     [16]byte
+	SpanID      [8]byte
+	FlagVersion [1]byte
 
 	Trace struct {
-		TraceID  TraceID
-		ParentID SpanID
-		Flags    Flags
+		TraceID        TraceID
+		ParentID       SpanID
+		Flags, Version FlagVersion
 	}
 )
 
-// PareHeader parses traceid header of version-traceid-spanid-flags format (00-hex-hex-01)
+func (t TraceID) String() string     { return hex.EncodeToString(t[:]) }
+func (s SpanID) String() string      { return base64.StdEncoding.EncodeToString(s[:]) }
+func (f FlagVersion) String() string { return hex.EncodeToString(f[:]) }
+
+func (tr Trace) String() string {
+	return fmt.Sprintf("%x-%x-%x-%x", tr.Version[:], tr.TraceID[:], tr.ParentID[:], tr.Flags[:])
+}
+
+// ParseHeader parses traceid header of version-traceid-spanid-flags format (00-hex-hex-01)
 //
 // See https://www.w3.org/TR/trace-context/#trace-context-http-headers-format
 func ParseHeader(header http.Header) (Trace, error) {
@@ -33,15 +42,13 @@ func ParseHeader(header http.Header) (Trace, error) {
 	if len(parts) != wantParts {
 		return Trace{}, fmt.Errorf("wanted %d parts, got %d (from %s)", wantParts, len(parts), hdr)
 	}
-	if parts[0] != "00" {
-		return Trace{}, fmt.Errorf("version must be 00, got %s (from %s)", parts[0], hdr)
-	}
 	var tr Trace
 	for _, x := range []struct {
 		Name string
 		Idx  int
 		Dest []byte
 	}{
+		{"version", 0, tr.Version[:]},
 		{"traceid", 1, tr.TraceID[:]},
 		{"parentid", 2, tr.ParentID[:]},
 		{"flags", 3, tr.Flags[:]},
