@@ -2,14 +2,22 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
+// Package w3ctrace helps receiving and sending
+//
+// Traceparent: Version-TraceID-SpanID-Flags
+//
+// headers.
 package w3ctrace
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
 	"net/http"
 	"strings"
+
+	"github.com/oklog/ulid/v2"
 )
 
 type (
@@ -22,21 +30,38 @@ type (
 		ParentID       SpanID
 		Flags, Version FlagVersion
 	}
+
+	ctxTrace struct{}
 )
 
 func (t TraceID) String() string     { return hex.EncodeToString(t[:]) }
+func (t TraceID) IsZero() bool       { return t == TraceID{} }
 func (s SpanID) String() string      { return base64.StdEncoding.EncodeToString(s[:]) }
+func (s SpanID) IsZero() bool        { return s == SpanID{} }
 func (f FlagVersion) String() string { return hex.EncodeToString(f[:]) }
 
 func (tr Trace) String() string {
 	return fmt.Sprintf("%x-%x-%x-%x", tr.Version[:], tr.TraceID[:], tr.ParentID[:], tr.Flags[:])
 }
+func (tr Trace) IsValid() bool {
+	return tr.Version == FlagVersion([]byte{0x00}) && !tr.TraceID.IsZero()
+}
+func (tr *Trace) Ensure() {
+	if tr.IsValid() {
+		return
+	}
+	id := ulid.MustNew(ulid.Now(), ulid.DefaultEntropy())
+	copy(tr.TraceID[:], id[:cap(tr.TraceID)])
+	if tr.ParentID.IsZero() {
+		id := ulid.MustNew(ulid.Now(), ulid.DefaultEntropy())
+		copy(tr.ParentID[:], id[:cap(id)-cap(tr.ParentID)])
+	}
+}
 
-// ParseHeader parses traceid header of version-traceid-spanid-flags format (00-hex-hex-01)
+// ParseString parses version-traceid-spanid-flags format (00-hex-hex-01)
 //
 // See https://www.w3.org/TR/trace-context/#trace-context-http-headers-format
-func ParseHeader(header http.Header) (Trace, error) {
-	hdr := header.Get("traceparent")
+func ParseString(hdr string) (Trace, error) {
 	const wantParts = 4
 	parts := strings.SplitN(hdr, "-", wantParts+1)
 	if len(parts) != wantParts {
@@ -63,4 +88,39 @@ func ParseHeader(header http.Header) (Trace, error) {
 		}
 	}
 	return tr, nil
+}
+
+// ParseHeader parses traceid header.
+func ParseHeader(header http.Header) (Trace, error) {
+	return ParseString(header.Get("traceparent"))
+}
+
+// NewContext stores the trace into the context (iff it's valid).
+func NewContext(ctx context.Context, tr Trace) context.Context {
+	if !tr.IsValid() {
+		return ctx
+	}
+	return context.WithValue(ctx, ctxTrace{}, tr)
+}
+
+// FromContext return the trace from the context.
+// It may be empty - use tr.Ensure() to generate a new trace if it is empty.
+func FromContext(ctx context.Context) Trace {
+	tr, _ := ctx.Value(ctxTrace{}).(Trace)
+	return tr
+}
+
+// ExtractHTTP extracts Trace from the request headers.
+// It may be empty - use tr.Ensure() to generate a new trace if it is empty.
+func ExtractHTTP(req *http.Request) Trace {
+	tr, _ := ParseHeader(req.Header)
+	return tr
+}
+
+// InjectHTTP injects the Traceparent header into the request (iff it is valid).
+func InjectHTTP(req *http.Request, tr Trace) {
+	if !tr.IsValid() {
+		return
+	}
+	req.Header.Set("Traceparent", tr.String())
 }
