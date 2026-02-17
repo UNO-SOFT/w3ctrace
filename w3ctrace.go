@@ -1,3 +1,7 @@
+// Copyright 2026 Tamás Gulácsi.
+//
+// SPDX-License-Identifier: Apache-2.0
+
 package w3ctrace
 
 import (
