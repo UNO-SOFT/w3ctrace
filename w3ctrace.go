@@ -134,3 +134,12 @@ func InjectHTTP(req *http.Request, tr Trace) {
 	}
 	req.Header.Set("Traceparent", tr.String())
 }
+
+func HTTPMiddleware(hndl http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		tr, _ := ParseHeader(r.Header)
+		tr.Ensure()
+		r = r.WithContext(NewContext(r.Context(), tr))
+		hndl.ServeHTTP(w, r)
+	})
+}
