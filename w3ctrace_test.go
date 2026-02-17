@@ -16,7 +16,7 @@ func TestParseHeader(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Logf("trace: %s=%#v", tr, tr)
+	t.Logf("trace: %s=%s=%#v", tr, tr.ShortString(), tr)
 
 	tr2, err := w3ctrace.ParseHeader(http.Header{"Traceparent": {tr.String()}})
 	if err != nil {

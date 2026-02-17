@@ -43,12 +43,21 @@ func (f FlagVersion) String() string { return hex.EncodeToString(f[:]) }
 func (tr Trace) String() string {
 	return fmt.Sprintf("%x-%x-%x-%x", tr.Version[:], tr.TraceID[:], tr.ParentID[:], tr.Flags[:])
 }
+func (tr Trace) ShortString() string {
+	// 22 + 1 + 11
+	dst := make([]byte, 0, 22+1+11)
+	b64 := base64.RawURLEncoding
+	dst = b64.AppendEncode(dst, tr.TraceID[:])
+	dst = append(dst, '.')
+	dst = b64.AppendEncode(dst, tr.ParentID[:])
+	return string(dst)
+}
 func (tr Trace) IsValid() bool {
 	return tr.Version == FlagVersion([]byte{0x00}) && !tr.TraceID.IsZero()
 }
-func (tr *Trace) Ensure() {
+func (tr *Trace) Ensure() *Trace {
 	if tr.IsValid() {
-		return
+		return tr
 	}
 	id := ulid.MustNew(ulid.Now(), ulid.DefaultEntropy())
 	copy(tr.TraceID[:], id[:cap(tr.TraceID)])
@@ -56,6 +65,7 @@ func (tr *Trace) Ensure() {
 		id := ulid.MustNew(ulid.Now(), ulid.DefaultEntropy())
 		copy(tr.ParentID[:], id[:cap(id)-cap(tr.ParentID)])
 	}
+	return tr
 }
 
 // ParseString parses version-traceid-spanid-flags format (00-hex-hex-01)
