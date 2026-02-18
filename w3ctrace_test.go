@@ -12,17 +12,26 @@ import (
 )
 
 func TestParseHeader(t *testing.T) {
-	tr, err := w3ctrace.ParseHeader(http.Header{"Traceparent": {"00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Logf("trace: %s=%s=%#v", tr, tr.ShortString(), tr)
+	rnd := w3ctrace.New()
+	for nm, want := range map[string]string{
+		"fix":  "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
+		"rnd":  rnd.String(),
+		"rnd2": rnd.Ensure().String(),
+	} {
+		t.Run(nm, func(t *testing.T) {
+			tr, err := w3ctrace.ParseHeader(http.Header{"Traceparent": {want}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Logf("trace: %s=%s=%#v", tr, tr.ShortString(), tr)
 
-	tr2, err := w3ctrace.ParseHeader(http.Header{"Traceparent": {tr.String()}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if tr2 != tr {
-		t.Fatalf("mismatch: tr1=%s != tr2=%s", tr, tr2)
+			tr2, err := w3ctrace.ParseHeader(http.Header{"Traceparent": {tr.String()}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if *tr2 != *tr {
+				t.Fatalf("mismatch: tr1=%s != tr2=%s", tr, tr2)
+			}
+		})
 	}
 }
