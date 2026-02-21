@@ -60,8 +60,11 @@ func NewFlag(value byte) FlagVersion { return FlagVersion([]byte{value}) }
 func (f FlagVersion) String() string { return hex.EncodeToString(f[:]) }
 
 func New() *Trace { return &Trace{TraceID: NewTraceID(), SpanID: NewSpanID()} }
-func (t *Trace) NewSpan() *Trace {
-	return &Trace{TraceID: t.TraceID, SpanID: NewSpanID()}
+func (tr *Trace) NewSpan() *Trace {
+	if tr == nil {
+		return tr
+	}
+	return &Trace{TraceID: tr.TraceID, SpanID: NewSpanID()}
 }
 func (tr *Trace) String() string {
 	if tr == nil || !tr.IsValid() {
@@ -87,7 +90,7 @@ func (tr *Trace) IsValid() bool {
 		!tr.TraceID.IsZero()
 }
 func (tr *Trace) Ensure() *Trace {
-	if tr.IsValid() {
+	if tr == nil || tr.IsValid() {
 		return tr
 	}
 	id := ulid.MustNew(ulid.Now(), ulid.DefaultEntropy())
