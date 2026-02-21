@@ -27,7 +27,7 @@ type (
 
 	Trace struct {
 		TraceID        TraceID
-		ParentID       SpanID
+		SpanID         SpanID
 		Flags, Version FlagVersion
 	}
 
@@ -36,14 +36,22 @@ type (
 
 func NewTraceID() TraceID {
 	var t TraceID
-	id := ulid.MustNew(ulid.Now(), ulid.DefaultEntropy())
-	copy(t[:], id[:cap(t)])
+	u := ulid.MustNew(ulid.Now(), ulid.DefaultEntropy())
+	copy(t[:], u[:cap(t)])
 	return t
 }
 func (t TraceID) String() string { return hex.EncodeToString(t[:]) }
 func (t TraceID) IsZero() bool   { return t == TraceID{} }
 
-func NewSpanID() SpanID         { var s SpanID; ulid.DefaultEntropy().Read(s[:]); return s }
+func NewSpanID() SpanID {
+	var s SpanID
+	// ULID is 48bit time + 80bit random
+	u := ulid.MustNew(ulid.Now(), ulid.DefaultEntropy())
+	// SpanID is 64bits - 48-16=32bits time, 32bits random
+	copy(s[:4], u[:4])
+	copy(s[4:], u[6:])
+	return s
+}
 func (s SpanID) String() string { return base64.StdEncoding.EncodeToString(s[:]) }
 func (s SpanID) IsZero() bool   { return s == SpanID{} }
 
@@ -51,12 +59,15 @@ func NewVersion() FlagVersion        { return FlagVersion([]byte{0}) }
 func NewFlag(value byte) FlagVersion { return FlagVersion([]byte{value}) }
 func (f FlagVersion) String() string { return hex.EncodeToString(f[:]) }
 
-func New() *Trace { return &Trace{TraceID: NewTraceID()} }
+func New() *Trace { return &Trace{TraceID: NewTraceID(), SpanID: NewSpanID()} }
+func (t *Trace) NewSpan() *Trace {
+	return &Trace{TraceID: t.TraceID, SpanID: NewSpanID()}
+}
 func (tr *Trace) String() string {
 	if tr == nil || !tr.IsValid() {
 		return ""
 	}
-	return fmt.Sprintf("%x-%x-%x-%x", tr.Version[:], tr.TraceID[:], tr.ParentID[:], tr.Flags[:])
+	return fmt.Sprintf("%x-%x-%x-%x", tr.Version[:], tr.TraceID[:], tr.SpanID[:], tr.Flags[:])
 }
 func (tr *Trace) ShortString() string {
 	if tr == nil || !tr.IsValid() {
@@ -67,7 +78,7 @@ func (tr *Trace) ShortString() string {
 	b64 := base64.RawURLEncoding
 	dst = b64.AppendEncode(dst, tr.TraceID[:])
 	dst = append(dst, '.')
-	dst = b64.AppendEncode(dst, tr.ParentID[:])
+	dst = b64.AppendEncode(dst, tr.SpanID[:])
 	return string(dst)
 }
 func (tr *Trace) IsValid() bool {
@@ -81,8 +92,8 @@ func (tr *Trace) Ensure() *Trace {
 	}
 	id := ulid.MustNew(ulid.Now(), ulid.DefaultEntropy())
 	copy(tr.TraceID[:], id[:cap(tr.TraceID)])
-	if tr.ParentID.IsZero() {
-		ulid.DefaultEntropy().Read(tr.ParentID[:])
+	if tr.SpanID.IsZero() {
+		tr.SpanID = NewSpanID()
 	}
 	return tr
 }
@@ -104,7 +115,7 @@ func ParseString(hdr string) (*Trace, error) {
 	}{
 		{"version", 0, tr.Version[:]},
 		{"traceid", 1, tr.TraceID[:]},
-		{"parentid", 2, tr.ParentID[:]},
+		{"parentid", 2, tr.SpanID[:]},
 		{"flags", 3, tr.Flags[:]},
 	} {
 		if len(parts[x.Idx]) != cap(x.Dest)*2 {
@@ -119,9 +130,11 @@ func ParseString(hdr string) (*Trace, error) {
 	return &tr, nil
 }
 
+const key = "Traceparent"
+
 // ParseHeader parses traceid header.
 func ParseHeader(header http.Header) (*Trace, error) {
-	return ParseString(header.Get("traceparent"))
+	return ParseString(header.Get(key))
 }
 
 // NewContext stores the trace into the context (iff it's valid).
@@ -151,7 +164,7 @@ func InjectHTTP(req *http.Request, tr *Trace) {
 	if !tr.IsValid() {
 		return
 	}
-	req.Header.Set("Traceparent", tr.String())
+	req.Header.Set(key, tr.String())
 }
 
 func HTTPMiddleware(hndl http.Handler) http.Handler {
@@ -159,6 +172,7 @@ func HTTPMiddleware(hndl http.Handler) http.Handler {
 		tr, _ := ParseHeader(r.Header)
 		tr.Ensure()
 		r = r.WithContext(NewContext(r.Context(), tr))
+		// w.Header().Set(key, tr.String())
 		hndl.ServeHTTP(w, r)
 	})
 }

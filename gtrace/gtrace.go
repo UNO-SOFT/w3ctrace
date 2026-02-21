@@ -22,7 +22,7 @@ import (
 const key = "traceparent"
 
 // AppendTraceToContext adds the trace to the Client's outgoing Context, to be sent to the Server.
-func AppendTraceToContext(ctx context.Context, tr w3ctrace.Trace) context.Context {
+func AppendTraceToContext(ctx context.Context, tr *w3ctrace.Trace) context.Context {
 	if tr.IsValid() {
 		return metadata.AppendToOutgoingContext(ctx, key, tr.String())
 	}
@@ -30,7 +30,7 @@ func AppendTraceToContext(ctx context.Context, tr w3ctrace.Trace) context.Contex
 }
 
 // FromIncomingContext (ServerStream.Context()) reads the Trace in the Server, send by the Client.
-func FromIncomingContext(ctx context.Context) w3ctrace.Trace {
+func FromIncomingContext(ctx context.Context) *w3ctrace.Trace {
 	if md, ok := metadata.FromIncomingContext(ctx); ok {
 		for _, s := range md.Get(key) {
 			if s == "" {
@@ -41,18 +41,18 @@ func FromIncomingContext(ctx context.Context) w3ctrace.Trace {
 			}
 		}
 	}
-	return w3ctrace.Trace{}
+	return nil
 }
 
 // ServerToClientUnary sends the Trace from the unary Server to the Client.
-func ServerToClientUnary(ctx context.Context, tr w3ctrace.Trace) {
+func ServerToClientUnary(ctx context.Context, tr *w3ctrace.Trace) {
 	if tr.IsValid() {
 		grpc.SetHeader(ctx, metadata.Pairs(key, tr.String()))
 	}
 }
 
 // ServerToClientStreaming sends the Trace from the streaming Server to the Client.
-func ServerToClientStreaming(ss grpc.ServerStream, tr w3ctrace.Trace) {
+func ServerToClientStreaming(ss grpc.ServerStream, tr *w3ctrace.Trace) {
 	if tr.IsValid() {
 		ss.SetHeader(metadata.Pairs(key, tr.String()))
 	}
