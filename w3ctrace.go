@@ -179,3 +179,20 @@ func HTTPMiddleware(hndl http.Handler) http.Handler {
 		hndl.ServeHTTP(w, r)
 	})
 }
+
+// NewTransport wraps the given transport (http.DefaultTransport for nil) and sets the Traceparent header from the context.
+func WrapTransport(rt http.RoundTripper) http.RoundTripper {
+	if rt == nil {
+		rt = http.DefaultTransport
+	}
+	return roundTripper{rt}
+}
+
+type roundTripper struct{ rt http.RoundTripper }
+
+func (rt roundTripper) RoundTrip(r *http.Request) (*http.Response, error) {
+	if tr := FromContext(r.Context()); tr.IsValid() {
+		r.Header.Set(key, tr.String())
+	}
+	return rt.RoundTrip(r)
+}
