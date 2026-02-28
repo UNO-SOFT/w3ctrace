@@ -10,6 +10,7 @@
 package w3ctrace
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/hex"
@@ -105,12 +106,24 @@ func (tr *Trace) Ensure() *Trace {
 //
 // See https://www.w3.org/TR/trace-context/#trace-context-http-headers-format
 func ParseString(hdr string) (*Trace, error) {
+	var tr Trace
 	const wantParts = 4
-	parts := strings.SplitN(hdr, "-", wantParts+1)
+	parts := strings.SplitN(hdr, "-", wantParts+2)
 	if len(parts) != wantParts {
+		// 8be4df61-93ca-11d2-aa0d-00e098032b8c
+		if len(parts) == 5 && len(hdr) == 32+4 { // UUID
+			if n, err := hex.Decode(tr.TraceID[:], bytes.ReplaceAll([]byte(hdr), []byte("-"), nil)); err == nil && n == cap(tr.TraceID) {
+				return &tr, nil
+			}
+		} else if len(parts) == 1 && len(hdr) == 26 { // ULID
+			// 01ARZ3NDEKTSV4RRFFQ69G5FAV
+			if u, err := ulid.Parse(hdr); err == nil {
+				copy(tr.TraceID[:], u.Bytes())
+				return &tr, nil
+			}
+		}
 		return nil, fmt.Errorf("wanted %d parts, got %d (from %s)", wantParts, len(parts), hdr)
 	}
-	var tr Trace
 	for _, x := range []struct {
 		Name string
 		Idx  int
