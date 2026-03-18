@@ -207,5 +207,5 @@ func (rt roundTripper) RoundTrip(r *http.Request) (*http.Response, error) {
 	if tr := FromContext(r.Context()); tr.IsValid() {
 		r.Header.Set(key, tr.String())
 	}
-	return rt.RoundTrip(r)
+	return rt.rt.RoundTrip(r)
 }
