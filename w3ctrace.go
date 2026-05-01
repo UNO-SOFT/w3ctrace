@@ -14,11 +14,17 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
 
 	"github.com/oklog/ulid/v2"
+)
+
+var (
+	ErrBadFormat = errors.New("bad format")
+	ErrNoHeader  = errors.New("header missing")
 )
 
 type (
@@ -106,6 +112,9 @@ func (tr *Trace) Ensure() *Trace {
 //
 // See https://www.w3.org/TR/trace-context/#trace-context-http-headers-format
 func ParseString(hdr string) (*Trace, error) {
+	if hdr == "" {
+		return nil, ErrNoHeader
+	}
 	var tr Trace
 	const wantParts = 4
 	parts := strings.SplitN(hdr, "-", wantParts+2)
@@ -122,7 +131,7 @@ func ParseString(hdr string) (*Trace, error) {
 				return &tr, nil
 			}
 		}
-		return nil, fmt.Errorf("wanted %d parts, got %d (from %s)", wantParts, len(parts), hdr)
+		return nil, fmt.Errorf("%w: wanted %d parts, got %d (from %s)", ErrBadFormat, wantParts, len(parts), hdr)
 	}
 	for _, x := range []struct {
 		Name string
@@ -150,7 +159,11 @@ const key = "Traceparent"
 
 // ParseHeader parses traceid header.
 func ParseHeader(header http.Header) (*Trace, error) {
-	return ParseString(header.Get(key))
+	s := header.Get(key)
+	if s == "" {
+		return nil, ErrNoHeader
+	}
+	return ParseString(s)
 }
 
 // NewContext stores the trace into the context (iff it's valid).
